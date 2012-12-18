@@ -14,6 +14,8 @@ class CampfireNotifierTest < Test::Unit::TestCase
         assert_nil @campfire_notifier.room
         assert_equal false, @campfire_notifier.ssl
         assert_equal false, @campfire_notifier.only_failed_builds
+        assert_equal false, @campfire_notifier.only_fixed_and_broken_builds
+        assert_equal false, @campfire_notifier.only_first_failure
       end
 
       should "not be enabled" do
@@ -86,8 +88,7 @@ class CampfireNotifierTest < Test::Unit::TestCase
 
         should "notify of build outcome" do
           @campfire_notifier.expects(:notify_of_build_outcome).with(
-            @build,
-            "SUCCESS"
+            @build, "PASSED"
           )
           @campfire_notifier.build_finished(@build)
         end
@@ -102,38 +103,179 @@ class CampfireNotifierTest < Test::Unit::TestCase
             @campfire_notifier.build_finished(@build)
           end
         end
+
+        context "and only_first_failure is true" do
+          setup do
+            @campfire_notifier.only_first_failure = true
+          end
+
+          should "notify of build outcome" do
+            @campfire_notifier.expects(:notify_of_build_outcome).with(
+              @build, "PASSED"
+            )
+            @campfire_notifier.build_finished(@build)
+          end
+        end
+
+        context "and only_fixed_and_broken_builds is true" do
+          setup do
+            @campfire_notifier.only_fixed_and_broken_builds = true
+          end
+
+          should "not notify of build outcome" do
+            @campfire_notifier.expects(:notify_of_build_outcome).never
+            @campfire_notifier.build_finished(@build)
+          end
+        end
+
       end
 
       context "on failed build" do
         setup do
-          @campfire_notifier.expects(:notify_of_build_outcome).with(
-            @build,
-            "BROKEN"
-          )
+          @build.stubs(:successful?).returns(false)
         end
 
         should "notify of build outcome" do
-          @campfire_notifier.build_broken(
-            @build,
-            previous_build = stub('Previous Build')
+          @campfire_notifier.expects(:notify_of_build_outcome).with(
+            @build, "FAILED!"
           )
+          @campfire_notifier.build_finished(@build)
         end
+
+        context "and only_failed_builds is true" do
+          setup do
+            @campfire_notifier.only_failed_builds = true
+          end
+
+          should "not notify of build outcome" do
+            @campfire_notifier.expects(:notify_of_build_outcome).with(
+              @build,"FAILED!"
+            )
+            @campfire_notifier.build_finished(@build)
+          end
+        end
+
+        context "and only_first_failure is true" do
+          setup do
+            @campfire_notifier.only_first_failure = true
+          end
+
+          should "not notify of build outcome" do
+            @campfire_notifier.expects(:notify_of_build_outcome).never
+            @campfire_notifier.build_finished(@build)
+          end
+        end
+
+        context "and only_fixed_and_broken_builds is true" do
+          setup do
+            @campfire_notifier.only_fixed_and_broken_builds = true
+          end
+
+          should "not notify of build outcome" do
+            @campfire_notifier.expects(:notify_of_build_outcome).never
+            @campfire_notifier.build_finished(@build)
+          end
+        end
+
       end
 
-      context "on fixed build" do
+
+      context "on broken build (when previous build was success)" do
         setup do
-          @campfire_notifier.expects(:notify_of_build_outcome).with(
-            @build,
-            "FIXED"
-          )
+          @previous_build = stub('Previous Build')
         end
 
-        should "notify of build outcome" do
-          @campfire_notifier.build_fixed(
-            @build,
-            previous_build = stub('Previous Build')
-          )
+        should "not notify of build outcome" do
+          @campfire_notifier.expects(:notify_of_build_outcome).never
+          @campfire_notifier.build_broken(@build,@previous_build)
         end
+
+        context "and only_failed_builds is true" do
+          setup do
+            @campfire_notifier.only_failed_builds = true
+          end
+
+          should "not notify of build outcome" do
+            @campfire_notifier.expects(:notify_of_build_outcome).never
+            @campfire_notifier.build_broken(@build,@previous_build)
+          end
+        end
+
+        context "and only_first_failure is true" do
+          setup do
+            @campfire_notifier.only_first_failure = true
+          end
+
+          should "notify of build outcome" do
+            @campfire_notifier.expects(:notify_of_build_outcome).with(
+              @build, "BROKE!"
+            )
+            @campfire_notifier.expects(:notify_of_build_outcome).never
+            @campfire_notifier.build_broken(@build,@previous_build)
+          end
+        end
+
+        context "and only_fixed_and_broken_builds is true" do
+          setup do
+            @campfire_notifier.only_fixed_and_broken_builds = true
+          end
+
+          should "notify of build outcome" do
+            @campfire_notifier.expects(:notify_of_build_outcome).with(
+              @build, "BROKE!"
+            )
+            @campfire_notifier.expects(:notify_of_build_outcome).never
+            @campfire_notifier.build_broken(@build,@previous_build)
+          end
+        end
+
+      end
+
+      context "on fixed build (when previous build was broken)" do
+        setup do
+          @previous_build = stub('Previous Build')
+        end
+
+        should "not notify of build outcome" do
+          @campfire_notifier.expects(:notify_of_build_outcome).never
+          @campfire_notifier.build_fixed(@build,@previous_build)
+        end
+
+        context "and only_failed_builds is true" do
+          setup do
+            @campfire_notifier.only_failed_builds = true
+          end
+          should "not notify of build outcome" do
+            @campfire_notifier.expects(:notify_of_build_outcome).never
+            @campfire_notifier.build_fixed(@build,@previous_build)
+          end
+        end
+
+        context "and only_first_failure is true" do
+          setup do
+            @campfire_notifier.only_first_failure = true
+          end
+
+          should "not notify of build outcome" do
+            @campfire_notifier.expects(:notify_of_build_outcome).never
+            @campfire_notifier.build_fixed(@build,@previous_build)
+          end
+        end
+
+        context "and only_fixed_and_broken_builds is true" do
+          setup do
+            @campfire_notifier.only_fixed_and_broken_builds = true
+          end
+
+          should "notify of build outcome" do
+            @campfire_notifier.expects(:notify_of_build_outcome).with(
+              @build, "WAS FIXED"
+            )
+            @campfire_notifier.expects(:notify_of_build_outcome).never
+            @campfire_notifier.build_fixed(@build,@previous_build)
+          end
+        end
+
       end
 
       context "and trac url provided" do
@@ -182,7 +324,7 @@ TXT
         @campfire_notifier.stubs(:get_changeset_committers).returns([])
         office_room.expects(:speak).with("fixed image")
         office_room.expects(:speak).with(
-          "Build abcdef of Test Project is SUCCESSFUL"
+          "Build abcdef of Test Project SUCCESSFUL"
         )
         office_room.expects(:paste).with(@build.changeset)
         office_room.expects(:speak).with(
